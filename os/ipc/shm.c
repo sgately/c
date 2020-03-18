@@ -20,10 +20,11 @@
 
 void print_error(const char*, int);
 
+sem_t mutex;
+
 int main(int argc, char* argv[])
 {
-
-	
+	sem_init(&mutex, 0, 1);	
 	
 //Get a key I can share with other processes.
 
@@ -31,7 +32,6 @@ int main(int argc, char* argv[])
 	char *filepath = "/tmp";
 	
 	key_t key;
-	sem_t mutex;
 	
 	if ((key = ftok(filepath, tokid)) == -1)
 		print_error("Can not create token", errno);
@@ -65,6 +65,7 @@ int main(int argc, char* argv[])
 	
  	//Clean up the shared memory pointer and id.	
 	if(argc > 1 && 0 == strcmp(argv[1], "reset")){
+		memset(shm, '\0', sizeof(char));
 		if (shmdt(shm) == -1)
 			print_error("Unable to detach shared memory", errno);
 
@@ -75,7 +76,6 @@ int main(int argc, char* argv[])
 	}else{
 		while(1){
 			int shmlen = strlen(shm);
-			printf("Shared memory bytes used: %d\n", shmlen);
 	
 			printf("Please type your username: ");
 			lineSize = getline(&name, &len, stdin);
@@ -93,11 +93,15 @@ int main(int argc, char* argv[])
 			//printf("%s\n", cbuf);
 			strcat(name, ": ");
 			strcat(name, cbuf);
+
 	
+			sem_wait(&mutex);
+
 			int cbuflen = strlen(name);
 			printf("Length of string to write: %d\n", cbuflen);
+			shmlen = strlen(shm);
+			printf("Shared memory bytes used: %d\n", shmlen);
 			
-			sem_trywait(&mutex);
 			if (shmlen + cbuflen + 1 < bufsz) {
 				//printf("Before write (%lu): %s\n", strlen(shm), shm);
 				memcpy(shm + shmlen, name,  cbuflen + 1);
@@ -106,9 +110,13 @@ int main(int argc, char* argv[])
 			} 
 			else {
 				printf("Buffer full\n");
+				memset(shm, '\0', sizeof(char));
+				printf("Re-enter Message\n");
+
 			}
+			//memset(name, '\0', sizeof(char));
+			//memset(cbuf, '\0', sizeof(char));
 	
-			//memset(shm, '\0', sizeof(char));
 			//free(cbuf);
 			//free(name);
 			sem_post(&mutex);	
