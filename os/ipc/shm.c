@@ -20,11 +20,13 @@
 
 void print_error(const char*, int);
 
-sem_t mutex;
+//Integer Lock used to protect the critical code
+sem_t lock;
 
 int main(int argc, char* argv[])
 {
-	sem_init(&mutex, 0, 1);	
+	//Intializing the lock
+	sem_init(&lock, 0, 1);	
 	
 //Get a key I can share with other processes.
 
@@ -65,6 +67,7 @@ int main(int argc, char* argv[])
 	
  	//Clean up the shared memory pointer and id.	
 	if(argc > 1 && 0 == strcmp(argv[1], "reset")){
+		//Clear the shared memory regardless if it can be closed or not
 		memset(shm, '\0', sizeof(char));
 		if (shmdt(shm) == -1)
 			print_error("Unable to detach shared memory", errno);
@@ -77,54 +80,49 @@ int main(int argc, char* argv[])
 		while(1){
 			int shmlen = strlen(shm);
 	
+			//Get the users name and message
 			printf("Please type your username: ");
 			lineSize = getline(&name, &len, stdin);
-			//scanf("%ms", &name);
-			//printf("name: %s\n", &name);
 			printf("Type your message: ");
 			lineSize = getline(&cbuf, &len, stdin);
-			//scanf("%ms", &cbuf);
-			//printf("cbuf: %s\n", &cbuf);
 			
-			
+			//add a null to the name, and concat to "Name: Message" 
 			name[strlen(name) - 1] = '\0';
-			//cbuf[strlen(cbuf) - 1] = '\0';
-			//printf("%s\n", name);
-			//printf("%s\n", cbuf);
 			strcat(name, ": ");
 			strcat(name, cbuf);
 
 	
-			sem_wait(&mutex);
+			//Check if the mutex is locked (locked when mutex is zero), or wait until it is unlocked
+			sem_wait(&lock);
 
+			//Calculate the length of the whole message and recalculate the shm
 			int cbuflen = strlen(name);
 			printf("Length of string to write: %d\n", cbuflen);
 			shmlen = strlen(shm);
 			printf("Shared memory bytes used: %d\n", shmlen);
 			
+			//Check if the buffer is full
 			if (shmlen + cbuflen + 1 < bufsz) {
-				//printf("Before write (%lu): %s\n", strlen(shm), shm);
+				//Copy the message to the shared memory and print
 				memcpy(shm + shmlen, name,  cbuflen + 1);
-				//printf("After write (%lu): %s\n", strlen(shm), shm);
 				printf("%s\n", shm);
 			} 
 			else {
+				//If the buffer is full, clear the memory and ask to re-input info
 				printf("Buffer full\n");
 				memset(shm, '\0', sizeof(char));
 				printf("Re-enter Message\n");
 
 			}
-			//memset(name, '\0', sizeof(char));
-			//memset(cbuf, '\0', sizeof(char));
-	
-			//free(cbuf);
-			//free(name);
-			sem_post(&mutex);	
+			
+			//Unlock the mutex
+			sem_post(&lock);	
 		}
 	}	
 	exit(0);
 }
 
+//Helper method to print the error
 void print_error(const char* str, int code)
 {
 	printf("%s: %s\n",str, strerror(code));
